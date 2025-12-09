@@ -1267,18 +1267,14 @@ class ChaiFolder:
             if hasattr(ranking_outputs, 'tmscore'):
                 additional_metrics['tmscore'] = ranking_outputs.tmscore.cpu()
         except Exception:
-            # Silently skip if attributes don't exist
             pass
 
-        # Move final scalar/small tensor results to CPU
         result_dict = dict(
-            # Core metrics (existing)
             plddt_per_atom=plddt_scores_atom_cpu,  # Keep all atoms, move to CPU
             plddt=plddt_scores_cpu,  # Already computed using CPU masks
             pae=pae_scores_cpu,  # Already on CPU
             pde=pde_cpu,  # Already on CPU
             
-            # PAE summary statistics
             pae_mean=pae_mean,
             pae_std=pae_std,
             pae_min=pae_min,
