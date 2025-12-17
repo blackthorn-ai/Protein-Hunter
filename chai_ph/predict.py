@@ -1211,12 +1211,94 @@ class ChaiFolder:
 
         plddt_scores = avg_per_token_1d(plddt_scores_atom)  # Pass 1D tensor
 
-        # Move final scalar/small tensor results to CPU
+        # Compute additional summary statistics from metrics
+        pae_scores_cpu = pae_scores.squeeze().cpu()
+        pde_cpu = pde.squeeze().cpu()
+        plddt_scores_cpu = plddt_scores.cpu()
+        plddt_scores_atom_cpu = plddt_scores_atom.squeeze().cpu()
+        
+        # PAE summary statistics
+        pae_mean = pae_scores_cpu.mean().item()
+        pae_std = pae_scores_cpu.std().item()
+        pae_min = pae_scores_cpu.min().item()
+        pae_max = pae_scores_cpu.max().item()
+        
+        # pLDDT summary statistics (per token)
+        plddt_mean = plddt_scores_cpu.mean().item()
+        plddt_std = plddt_scores_cpu.std().item()
+        plddt_min = plddt_scores_cpu.min().item()
+        plddt_max = plddt_scores_cpu.max().item()
+        
+        # pLDDT summary statistics (per atom)
+        plddt_per_atom_mean = plddt_scores_atom_cpu.mean().item()
+        plddt_per_atom_std = plddt_scores_atom_cpu.std().item()
+        plddt_per_atom_min = plddt_scores_atom_cpu.min().item()
+        plddt_per_atom_max = plddt_scores_atom_cpu.max().item()
+        
+        # PDE summary statistics - compute expected distance from probability distribution
+        pde_bin_centers = _bin_centers(0.0, 32.0, pde_cpu.shape[-1])
+        pde_expected_dist = (pde_cpu * pde_bin_centers.unsqueeze(0).unsqueeze(0)).sum(dim=-1)
+        pde_mean_dist = pde_expected_dist.mean().item()
+        pde_std_dist = pde_expected_dist.std().item()
+        pde_min_dist = pde_expected_dist.min().item()
+        pde_max_dist = pde_expected_dist.max().item()
+        
+        # Try to access additional metrics from ranking_outputs if they exist
+        additional_metrics = {}
+        try:
+            # Check for additional ptm_scores attributes
+            if hasattr(ranking_outputs.ptm_scores, 'mean_pae'):
+                additional_metrics['mean_pae'] = ranking_outputs.ptm_scores.mean_pae.cpu()
+            if hasattr(ranking_outputs.ptm_scores, 'mean_ptm'):
+                additional_metrics['mean_ptm'] = ranking_outputs.ptm_scores.mean_ptm.cpu()
+            # Check for additional plddt_scores attributes
+            if hasattr(ranking_outputs.plddt_scores, 'mean_plddt'):
+                additional_metrics['mean_plddt'] = ranking_outputs.plddt_scores.mean_plddt.cpu()
+            # Check for additional clash_scores attributes
+            if hasattr(ranking_outputs.clash_scores, 'per_chain_clashes'):
+                additional_metrics['per_chain_clashes'] = ranking_outputs.clash_scores.per_chain_clashes.cpu()
+            if hasattr(ranking_outputs.clash_scores, 'clash_density'):
+                additional_metrics['clash_density'] = ranking_outputs.clash_scores.clash_density.cpu()
+            # Check for other ranking_outputs attributes
+            if hasattr(ranking_outputs, 'rmsd'):
+                additional_metrics['rmsd'] = ranking_outputs.rmsd.cpu()
+            if hasattr(ranking_outputs, 'gdt_ts'):
+                additional_metrics['gdt_ts'] = ranking_outputs.gdt_ts.cpu()
+            if hasattr(ranking_outputs, 'tmscore'):
+                additional_metrics['tmscore'] = ranking_outputs.tmscore.cpu()
+        except Exception:
+            pass
+
         result_dict = dict(
-            plddt_per_atom=plddt_scores_atom.squeeze().cpu(),  # Keep all atoms, move to CPU
-            plddt=plddt_scores.cpu(),  # Already computed using CPU masks
-            pae=pae_scores.squeeze().cpu(),  # Already on CPU
-            pde=pde.squeeze().cpu(),  # Already on CPU
+            plddt_per_atom=plddt_scores_atom_cpu,  # Keep all atoms, move to CPU
+            plddt=plddt_scores_cpu,  # Already computed using CPU masks
+            pae=pae_scores_cpu,  # Already on CPU
+            pde=pde_cpu,  # Already on CPU
+            
+            pae_mean=pae_mean,
+            pae_std=pae_std,
+            pae_min=pae_min,
+            pae_max=pae_max,
+            
+            # pLDDT summary statistics (per token)
+            plddt_mean=plddt_mean,
+            plddt_std=plddt_std,
+            plddt_min=plddt_min,
+            plddt_max=plddt_max,
+            
+            # pLDDT summary statistics (per atom)
+            plddt_per_atom_mean=plddt_per_atom_mean,
+            plddt_per_atom_std=plddt_per_atom_std,
+            plddt_per_atom_min=plddt_per_atom_min,
+            plddt_per_atom_max=plddt_per_atom_max,
+            
+            # PDE summary statistics (expected distance)
+            pde_mean_dist=pde_mean_dist,
+            pde_std_dist=pde_std_dist,
+            pde_min_dist=pde_min_dist,
+            pde_max_dist=pde_max_dist,
+            
+            # Ranking outputs (existing)
             ptm=ranking_outputs.ptm_scores.complex_ptm.cpu(),
             iptm=ranking_outputs.ptm_scores.interface_ptm.cpu(),
             per_chain_ptm=ranking_outputs.ptm_scores.per_chain_ptm.cpu(),
@@ -1228,6 +1310,9 @@ class ChaiFolder:
             complex_plddt=ranking_outputs.plddt_scores.complex_plddt.cpu(),
             per_chain_plddt=ranking_outputs.plddt_scores.per_chain_plddt.cpu(),
             ranking_score=ranking_outputs.aggregate_score.cpu().item(),
+            
+            # Additional metrics from ranking_outputs (if available)
+            **additional_metrics,
         )
         # Clean up GPU tensors from scoring
         del pae_logits, pde_logits, plddt_logits, valid_frames_mask, ranking_outputs

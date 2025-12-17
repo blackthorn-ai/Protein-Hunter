@@ -446,6 +446,13 @@ def optimize_protein_design(
             prev["pdb"],
             use_entity_names=use_entity_names,
         )
+        # Save PAE matrix for cycle 0 if available
+        if prev["state"].result and "pae" in prev["state"].result:
+            pae_matrix = prev["state"].result["pae"].detach().cpu().numpy()
+            pae_filename = f"{prefix}/cycle_0_pae.npz"
+            np.savez_compressed(pae_filename, pae=pae_matrix)
+            if verbose:
+                print(f"✅ Saved PAE matrix to {pae_filename}")
         msg, metric_dict = format_metrics(prev)
         iptm0 = metric_dict.get("iptm") if is_binder_design else None
         plddt0 = metric_dict.get("plddt")
@@ -494,6 +501,13 @@ def optimize_protein_design(
             new["bb"] = get_backbone_coords_from_result(new["state"])
             new["pdb"] = f"{prefix}/cycle_{step + 1}.cif"
             folder.save(new["pdb"], use_entity_names=use_entity_names)
+            # Save PAE matrix for this cycle if available
+            if new["state"].result and "pae" in new["state"].result:
+                pae_matrix = new["state"].result["pae"].detach().cpu().numpy()
+                pae_filename = f"{prefix}/cycle_{step + 1}_pae.npz"
+                np.savez_compressed(pae_filename, pae=pae_matrix)
+                if verbose:
+                    print(f"✅ Saved PAE matrix to {pae_filename}")
             msg, metric_dict = format_metrics(
                 new,
                 compute_ca_rmsd(
@@ -579,6 +593,14 @@ def optimize_protein_design(
                 source_cif_path = new["pdb"]
                 shutil.copy(source_cif_path, dest_cif_path)
                 print(f"✅ Copied high-ipTM CIF to {dest_cif_path}")
+                
+                # --- 3b. Save PAE matrix for high-ipTM structure ---
+                if new["state"].result and "pae" in new["state"].result:
+                    pae_matrix = new["state"].result["pae"].detach().cpu().numpy()
+                    pae_base_name = f"{base_filename}_pae.npz"
+                    pae_path = os.path.join(high_iptm_cif_dir, pae_base_name)
+                    np.savez_compressed(pae_path, pae=pae_matrix)
+                    print(f"✅ Saved high-ipTM PAE matrix to {pae_path}")
 
                 # --- 4. Append to high-ipTM summary CSV ---
                 summary_csv_path = os.path.join(run_prefix_dir, "summary_high_iptm.csv")
@@ -737,6 +759,13 @@ def optimize_protein_design(
         try:
             folder.restore_state(best["state"])
             folder.save(f"{prefix}/best.cif", use_entity_names=use_entity_names)
+            # Save PAE matrix for best structure if available
+            if best["state"].result and "pae" in best["state"].result:
+                pae_matrix = best["state"].result["pae"].detach().cpu().numpy()
+                pae_filename = f"{prefix}/best_pae.npz"
+                np.savez_compressed(pae_filename, pae=pae_matrix)
+                if verbose:
+                    print(f"✅ Saved PAE matrix to {pae_filename}")
         except Exception as e:
             print(f"Error restoring/saving best state: {e}")
     else:
@@ -785,6 +814,13 @@ def optimize_protein_design(
                     "pdb": f"{prefix}/final_validation.cif",
                 }
                 folder.save(val["pdb"], use_entity_names=use_entity_names)
+                # Save PAE matrix for final validation if available
+                if val["state"].result and "pae" in val["state"].result:
+                    pae_matrix = val["state"].result["pae"].detach().cpu().numpy()
+                    pae_filename = f"{prefix}/final_validation_pae.npz"
+                    np.savez_compressed(pae_filename, pae=pae_matrix)
+                    if verbose:
+                        print(f"Saved PAE matrix to {pae_filename}")
                 val["bb"] = get_backbone_coords_from_result(val["state"])
 
                 if best.get("n_target") is not None:

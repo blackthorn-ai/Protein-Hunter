@@ -310,7 +310,7 @@ class ProteinHunter_Boltz:
             "sampling_steps": self.args.diffuse_steps,
             "diffusion_samples": 1,
             "write_confidence_summary": True,
-            "write_full_pae": False,
+            "write_full_pae": True,  # Enable PAE matrix saving
             "write_full_pde": False,
             "max_parallel_samples": 1,
         }
@@ -401,6 +401,13 @@ class ProteinHunter_Boltz:
             pdb_filename = f"{run_save_dir}/{a.name}_run_{run_id}_predicted_cycle_0.pdb"
             plddts = output["plddt"].detach().cpu().numpy()[0]
             save_pdb(structure, output["coords"], plddts, pdb_filename)
+            # Save PAE matrix for cycle 0 if available
+            if "pae" in output:
+                pae_matrix = output["pae"].detach().cpu().numpy()[0]
+                pae_filename = (
+                    f"{run_save_dir}/{a.name}_run_{run_id}_predicted_cycle_0_pae.npz"
+                )
+                np.savez_compressed(pae_filename, pae=pae_matrix)
 
             contact_check_okay = True
             if a.contact_residues.strip() and not a.no_contact_filter:
@@ -548,6 +555,14 @@ class ProteinHunter_Boltz:
                     best_plddts,
                     best_pdb_filename,
                 )
+                # Save PAE matrix if available
+                if "pae" in best_output:
+                    pae_matrix = best_output["pae"].detach().cpu().numpy()[0]
+                    pae_filename = (
+                        f"{run_save_dir}/{a.name}_run_{run_id}_best_structure_pae.npz"
+                    )
+                    np.savez_compressed(pae_filename, pae=pae_matrix)
+                    print(f"✅ Saved PAE matrix to {pae_filename}")
                 best_cycle_idx = cycle + 1
                 best_alanine_percentage = alanine_percentage
 
@@ -576,6 +591,13 @@ class ProteinHunter_Boltz:
             )
             plddts = output["plddt"].detach().cpu().numpy()[0]
             save_pdb(structure, output["coords"], plddts, pdb_filename)
+            # Save PAE matrix for this cycle if available
+            if "pae" in output:
+                pae_matrix = output["pae"].detach().cpu().numpy()[0]
+                pae_filename = (
+                    f"{run_save_dir}/{a.name}_run_{run_id}_predicted_cycle_{cycle + 1}_pae.npz"
+                )
+                np.savez_compressed(pae_filename, pae=pae_matrix)
             clean_memory()
 
             print(
