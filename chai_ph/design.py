@@ -158,8 +158,26 @@ def parse_args():
     )
     af_group.add_argument("--use_msa_for_af3", action="store_true")
     af_group.add_argument("--work_dir", default="", type=str)
-    af_group.add_argument("--high_iptm_threshold", default=0.8, type=float)
-    af_group.add_argument("--high_plddt_threshold", default=0.8, type=float)
+    af_group.add_argument("--high_iptm_threshold", default=0.8, type=float,
+                          help="Minimum iPTM threshold for high-confidence designs.")
+    af_group.add_argument("--high_plddt_threshold", default=0.8, type=float,
+                          help="Minimum pLDDT threshold for ordered proteins (0-1 scale).")
+    af_group.add_argument("--high_pae_threshold", default=15.0, type=float,
+                          help="Maximum PAE threshold for ordered proteins (lower is better, in Angstroms).")
+    af_group.add_argument("--high_ipae_threshold", default=15.0, type=float,
+                          help="Maximum iPAE threshold for ordered binder designs (lower is better, in Angstroms).")
+    af_group.add_argument("--auto_detect_disorder", action="store_true", default=True,
+                          help="Automatically detect disordered proteins and use relaxed thresholds.")
+    af_group.add_argument("--no_auto_detect_disorder", dest="auto_detect_disorder", action="store_false",
+                          help="Disable automatic disorder detection (use fixed thresholds).")
+    af_group.add_argument("--disordered_plddt_threshold", default=0.7, type=float,
+                          help="Minimum pLDDT threshold for disordered proteins (relaxed, 0-1 scale).")
+    af_group.add_argument("--disordered_pae_threshold", default=20.0, type=float,
+                          help="Maximum PAE threshold for disordered proteins (relaxed, in Angstroms).")
+    af_group.add_argument("--min_low_plddt_stretch", default=30, type=int,
+                          help="Minimum consecutive residues with pLDDT < 50 to flag disorder.")
+    af_group.add_argument("--low_plddt_threshold", default=0.5, type=float,
+                          help="pLDDT threshold for detecting low-confidence regions (0-1 scale, 0.5 = 50 in 0-100 scale).")
     return parser.parse_args()
 
 
