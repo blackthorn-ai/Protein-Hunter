@@ -187,18 +187,15 @@ def optimize_protein_design(
         if not auto_detect or pae_val is None or plddt_per_residue is None:
             return False
         
-        # Convert to numpy array if needed
         if hasattr(plddt_per_residue, 'numpy'):
             plddt_array = plddt_per_residue.numpy()
         else:
             plddt_array = np.array(plddt_per_residue)
         
-        # Flatten if needed
         if plddt_array.ndim > 1:
             plddt_array = plddt_array.flatten()
         
-        # Check 1: Long stretches of low pLDDT (< 50, i.e., < 0.5 in 0-1 scale)
-        # Find consecutive residues with pLDDT < 50
+        # Check 1: Long stretches of low pLDDT 
         low_plddt_mask = plddt_array < low_plddt_threshold
         
         # Find longest stretch of low pLDDT
