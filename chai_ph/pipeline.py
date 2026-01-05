@@ -511,7 +511,7 @@ def optimize_protein_design(
             pae_filename = f"{prefix}/cycle_0_pae.npz"
             np.savez_compressed(pae_filename, pae=pae_matrix)
             if verbose:
-                print(f"Saved PAE matrix to {pae_filename}")
+                print(f"✅ Saved PAE matrix to {pae_filename}")
         msg, metric_dict = format_metrics(prev)
         iptm0 = metric_dict.get("iptm") if is_binder_design else None
         plddt0 = metric_dict.get("plddt")
