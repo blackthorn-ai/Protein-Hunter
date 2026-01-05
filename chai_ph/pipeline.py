@@ -54,6 +54,13 @@ def optimize_protein_design(
     pde_cutoff_inter: float = 3.0,
     high_iptm_threshold: float = 0.8,
     high_plddt_threshold: float = 0.8,
+    high_pae_threshold: float = 15.0,
+    high_ipae_threshold: float = 15.0,
+    auto_detect_disorder: bool = True,
+    disordered_plddt_threshold: float = 0.7,
+    disordered_pae_threshold: float = 20.0,
+    min_low_plddt_stretch: int = 30,
+    low_plddt_threshold: float = 0.5,
     omit_AA: Optional[str] = None,
     randomize_template_sequence: bool = True,
     cyclic: bool = False,
@@ -158,6 +165,58 @@ def optimize_protein_design(
 
         ipae = (target_to_binder + binder_to_target) / 2
         return {'pae': mean_pae, 'ipae': ipae}
+
+    def detect_disorder(plddt_per_residue, pae_val, auto_detect, min_low_plddt_stretch=30, low_plddt_threshold=0.5, high_pae_threshold=15.0):
+        """Detect if protein is likely disordered based on AlphaFold metrics.
+        
+        Uses AlphaFold-based rules from Nat Comms paper:
+        - Flag an IDR if you see long stretches of pLDDT < 50 (≥30 residues)
+        - Use PAE for inter-domain uncertainty (high PAE = uncertain arrangement)
+        
+        Args:
+            plddt_per_residue: Per-residue pLDDT scores (0-1 scale, numpy array)
+            pae_val: Mean PAE score (in Angstroms)
+            auto_detect: Whether to auto-detect disorder
+            min_low_plddt_stretch: Minimum consecutive residues with low pLDDT to flag disorder
+            low_plddt_threshold: pLDDT threshold (0-1 scale, 0.5 = 50 in 0-100 scale)
+            high_pae_threshold: PAE threshold for domain-level uncertainty (Angstroms)
+            
+        Returns:
+            bool: True if protein is likely disordered
+        """
+        if not auto_detect or pae_val is None or plddt_per_residue is None:
+            return False
+        
+        if hasattr(plddt_per_residue, 'numpy'):
+            plddt_array = plddt_per_residue.numpy()
+        else:
+            plddt_array = np.array(plddt_per_residue)
+        
+        if plddt_array.ndim > 1:
+            plddt_array = plddt_array.flatten()
+        
+        # Check 1: Long stretches of low pLDDT 
+        low_plddt_mask = plddt_array < low_plddt_threshold
+        
+        # Find longest stretch of low pLDDT
+        max_stretch = 0
+        current_stretch = 0
+        for is_low in low_plddt_mask:
+            if is_low:
+                current_stretch += 1
+                max_stretch = max(max_stretch, current_stretch)
+            else:
+                current_stretch = 0
+        
+        has_long_low_plddt_stretch = max_stretch >= min_low_plddt_stretch
+        
+        # Check 2: High PAE suggests uncertain inter-domain arrangement
+        has_high_pae = pae_val > high_pae_threshold
+        
+        # Protein is disordered if it has long low-pLDDT stretches OR high PAE
+        is_disordered = has_long_low_plddt_stretch or has_high_pae
+        
+        return is_disordered
 
     def compute_template_weight(prev_pde, n_target):
         """Compute PDE-based template weight"""
@@ -528,10 +587,59 @@ def optimize_protein_design(
 
             print(f"{prefix} | Step {step + 1}: {msg}")
             # --- Check and Save High-Value Designs ---
+            # Extract metrics
+            plddt_val = metric_dict.get("plddt", 0.0)
+            pae_val = metric_dict.get("pae")
+            ipae_val = metric_dict.get("ipae") if is_binder_design else None
+            
+            # Get per-residue pLDDT for disorder detection
+            plddt_per_residue = None
+            if new["state"].result and "plddt" in new["state"].result:
+                plddt_per_residue = new["state"].result["plddt"]
+                # Convert to numpy if it's a tensor
+                if hasattr(plddt_per_residue, 'numpy'):
+                    plddt_per_residue = plddt_per_residue.numpy()
+            
+            # Detect if protein is disordered using per-residue pLDDT
+            # Uses AlphaFold-based rules: long stretches of pLDDT < 50 OR high PAE
+            is_disordered = detect_disorder(
+                plddt_per_residue, 
+                pae_val, 
+                auto_detect_disorder,
+                min_low_plddt_stretch,
+                low_plddt_threshold,
+                high_pae_threshold
+            )
+            
+            # Use adaptive thresholds based on disorder detection
+            if is_disordered:
+                # Relaxed thresholds for disordered proteins
+                effective_plddt_threshold = disordered_plddt_threshold
+                effective_pae_threshold = disordered_pae_threshold
+                effective_ipae_threshold = disordered_pae_threshold
+                if verbose:
+                    print(f"{prefix} | Detected disordered protein - using relaxed thresholds")
+            else:
+                # Strict thresholds for ordered proteins
+                effective_plddt_threshold = high_plddt_threshold
+                effective_pae_threshold = high_pae_threshold
+                effective_ipae_threshold = high_ipae_threshold
+            
+            # Check PAE criteria: PAE should be below threshold (lower is better)
+            pae_check = (pae_val is not None) and (pae_val < effective_pae_threshold)
+            
+            # For binder designs, also check iPAE
+            if is_binder_design:
+                ipae_check = (ipae_val is not None) and (ipae_val < effective_ipae_threshold)
+            else:
+                ipae_check = True
+            
             save_yaml_this_design = (
                 is_binder_design
                 and metric_dict.get("iptm", 0.0) > high_iptm_threshold
-                and metric_dict.get("plddt", 0.0) > high_plddt_threshold
+                and plddt_val > effective_plddt_threshold
+                and pae_check
+                and ipae_check
                 and metric_dict.get("alanine_count", 0)/len(new_seq) <= 0.2
                 and "seq" in new
             )
@@ -820,7 +928,7 @@ def optimize_protein_design(
                     pae_filename = f"{prefix}/final_validation_pae.npz"
                     np.savez_compressed(pae_filename, pae=pae_matrix)
                     if verbose:
-                        print(f"Saved PAE matrix to {pae_filename}")
+                        print(f"✅ Saved PAE matrix to {pae_filename}")
                 val["bb"] = get_backbone_coords_from_result(val["state"])
 
                 if best.get("n_target") is not None:
@@ -884,6 +992,13 @@ class ProteinHunter_Chai:
         self.work_dir = args.work_dir
         self.high_iptm_threshold = args.high_iptm_threshold
         self.high_plddt_threshold = args.high_plddt_threshold
+        self.high_pae_threshold = args.high_pae_threshold
+        self.high_ipae_threshold = args.high_ipae_threshold
+        self.auto_detect_disorder = args.auto_detect_disorder
+        self.disordered_plddt_threshold = args.disordered_plddt_threshold
+        self.disordered_pae_threshold = args.disordered_pae_threshold
+        self.min_low_plddt_stretch = args.min_low_plddt_stretch
+        self.low_plddt_threshold = args.low_plddt_threshold
         self.plot = args.plot
         self.binder_chain = "A"
         self.target_chain = "B"
@@ -991,6 +1106,13 @@ class ProteinHunter_Chai:
                 align_to="all",
                 high_iptm_threshold=self.high_iptm_threshold,
                 high_plddt_threshold=self.high_plddt_threshold,
+                high_pae_threshold=self.high_pae_threshold,
+                high_ipae_threshold=self.high_ipae_threshold,
+                auto_detect_disorder=self.auto_detect_disorder,
+                disordered_plddt_threshold=self.disordered_plddt_threshold,
+                disordered_pae_threshold=self.disordered_pae_threshold,
+                min_low_plddt_stretch=self.min_low_plddt_stretch,
+                low_plddt_threshold=self.low_plddt_threshold,
                 randomize_template_sequence=True,
                 omit_AA=self.omit_AA,
                 cyclic=self.cyclic,
