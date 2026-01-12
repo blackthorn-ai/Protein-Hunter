@@ -303,6 +303,36 @@ class ProteinHunter_Boltz:
 
         print("✅ ProteinHunter_Boltz initialized.")
 
+    def _detect_disorder(self, plddt_per_residue, pae_val):
+        """Detect if protein is likely disordered based on AlphaFold metrics."""
+        a = self.args
+        if not a.auto_detect_disorder or pae_val is None or plddt_per_residue is None:
+            return False
+        
+        if hasattr(plddt_per_residue, 'numpy'):
+            plddt_array = plddt_per_residue.numpy()
+        else:
+            plddt_array = np.array(plddt_per_residue)
+        
+        if plddt_array.ndim > 1:
+            plddt_array = plddt_array.flatten()
+        
+        # Check for long stretches of low pLDDT
+        low_plddt_mask = plddt_array < a.low_plddt_threshold
+        max_stretch = 0
+        current_stretch = 0
+        for is_low in low_plddt_mask:
+            if is_low:
+                current_stretch += 1
+                max_stretch = max(max_stretch, current_stretch)
+            else:
+                current_stretch = 0
+        
+        has_long_low_plddt_stretch = max_stretch >= a.min_low_plddt_stretch
+        has_high_pae = pae_val > a.high_pae_threshold
+        
+        return has_long_low_plddt_stretch or has_high_pae
+
     def _load_boltz_model(self):
         """Loads and configures the Boltz model."""
         predict_args = {
@@ -344,6 +374,7 @@ class ProteinHunter_Boltz:
         best_cycle_idx = -1
         best_alanine_percentage = None
         run_metrics = {"run_id": run_id}
+        disorder_detected_this_run = False  # Track disorder detection per run
 
 
         if a.seq =="":
@@ -569,9 +600,31 @@ class ProteinHunter_Boltz:
                 .numpy()[0]
             )
 
-            # Check thresholds and log why designs are rejected
+            # Get per-residue pLDDT for disorder detection
+            plddt_per_residue = output["plddt"].detach().cpu().numpy()[0]
+            
+            # Detect disorder
+            is_disordered = self._detect_disorder(plddt_per_residue, mean_pae)
+            
+            # Use adaptive thresholds based on disorder detection
+            if is_disordered:
+                effective_plddt_threshold = a.disordered_plddt_threshold
+                effective_pae_threshold = a.disordered_pae_threshold
+                effective_ipae_threshold = a.disordered_pae_threshold
+                if not disorder_detected_this_run:
+                    print("Detected disordered protein - using relaxed thresholds")
+                    disorder_detected_this_run = True
+            else:
+                effective_plddt_threshold = a.high_plddt_threshold
+                effective_pae_threshold = a.high_pae_threshold
+                effective_ipae_threshold = a.high_ipae_threshold
+
+            # Check all thresholds
             alanine_check = alanine_percentage <= 0.20
             iptm_check = current_iptm > best_iptm
+            plddt_check = curr_plddt > effective_plddt_threshold
+            pae_check = (mean_pae is not None) and (mean_pae < effective_pae_threshold)
+            ipae_check = (ipae is not None) and (ipae < effective_ipae_threshold) if len(pair_chains) > 1 else True
             
             # Log threshold information
             threshold_info = []
@@ -579,12 +632,26 @@ class ProteinHunter_Boltz:
                 threshold_info.append(f"alanine={alanine_percentage:.1%} > 20%")
             if not iptm_check:
                 threshold_info.append(f"ipTM={current_iptm:.2f} <= best={best_iptm:.2f}")
+            if not plddt_check:
+                threshold_info.append(f"pLDDT={curr_plddt:.2f} <= {effective_plddt_threshold:.2f}")
+            if not pae_check:
+                threshold_info.append(f"PAE={mean_pae:.2f} >= {effective_pae_threshold:.2f}" if mean_pae is not None else "PAE=N/A")
+            if not ipae_check:
+                threshold_info.append(f"iPAE={ipae:.2f} >= {effective_ipae_threshold:.2f}" if ipae is not None else "iPAE=N/A")
             
             if threshold_info:
                 print(f"  ⚠️  Not selected as best: {', '.join(threshold_info)}")
 
-            # Update best structure (only if alanine content is acceptable)
-            if alanine_check and iptm_check:
+            # Update best structure (check all thresholds)
+            meets_all_thresholds = (
+                alanine_check 
+                and iptm_check 
+                and plddt_check 
+                and pae_check 
+                and ipae_check
+            )
+            
+            if meets_all_thresholds:
                 best_iptm = current_iptm
                 best_seq = seq
                 best_structure = copy.deepcopy(structure)
@@ -649,10 +716,13 @@ class ProteinHunter_Boltz:
                 f"ipTM: {current_iptm:.2f} pLDDT: {curr_plddt:.2f} iPLDDT: {curr_iplddt:.2f}{pae_str}{ipae_str} Alanine count: {alanine_count}"
             )
 
-            # 4. Save YAML for High ipTM
-            save_yaml_this_design = (alanine_percentage <= 0.20) and (
-                current_iptm > a.high_iptm_threshold
-                and curr_plddt > a.high_plddt_threshold
+            # 4. Save YAML for High ipTM (using same thresholds as best structure selection)
+            save_yaml_this_design = (
+                alanine_percentage <= 0.20
+                and current_iptm > a.high_iptm_threshold
+                and curr_plddt > effective_plddt_threshold
+                and pae_check
+                and ipae_check
             )
 
             if save_yaml_this_design and a.contact_residues.strip():
