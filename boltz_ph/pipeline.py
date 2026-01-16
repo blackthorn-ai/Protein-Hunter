@@ -502,6 +502,11 @@ class ProteinHunter_Boltz:
             if len(pair_chains) > 1:
                 cycle_0_ipae = cycle_0_pae  # Simplified proxy
 
+        plddt_per_residue_0 = output["plddt"].detach().cpu().numpy()[0]
+        if self._detect_disorder(plddt_per_residue_0, cycle_0_pae):
+            print("Detected disordered protein at cycle 0 - using relaxed thresholds for entire run")
+            disorder_detected_this_run = True
+
         run_metrics["cycle_0_iptm"] = cycle_0_iptm
         run_metrics["cycle_0_plddt"] = float(
             output.get("complex_plddt", torch.tensor([0.0])).detach().cpu().numpy()[0]
@@ -587,12 +592,9 @@ class ProteinHunter_Boltz:
             if "pae" in output:
                 pae_matrix = output["pae"].detach().cpu().numpy()[0]
                 mean_pae = float(np.mean(pae_matrix))
-                # Compute iPAE (interface PAE) for binder designs
                 if len(pair_chains) > 1:
-                    # Simplified: use mean PAE as proxy for iPAE
                     ipae = mean_pae
 
-            # Get current pLDDT for threshold checking
             curr_plddt = float(
                 output.get("complex_plddt", torch.tensor([0.0]))
                 .detach()
@@ -600,20 +602,18 @@ class ProteinHunter_Boltz:
                 .numpy()[0]
             )
 
-            # Get per-residue pLDDT for disorder detection
             plddt_per_residue = output["plddt"].detach().cpu().numpy()[0]
             
-            # Detect disorder
-            is_disordered = self._detect_disorder(plddt_per_residue, mean_pae)
+            if not disorder_detected_this_run:
+                is_disordered = self._detect_disorder(plddt_per_residue, mean_pae)
+                if is_disordered:
+                    print("Detected disordered protein - using relaxed thresholds")
+                    disorder_detected_this_run = True
             
-            # Use adaptive thresholds based on disorder detection
-            if is_disordered:
+            if disorder_detected_this_run:
                 effective_plddt_threshold = a.disordered_plddt_threshold
                 effective_pae_threshold = a.disordered_pae_threshold
                 effective_ipae_threshold = a.disordered_pae_threshold
-                if not disorder_detected_this_run:
-                    print("Detected disordered protein - using relaxed thresholds")
-                    disorder_detected_this_run = True
             else:
                 effective_plddt_threshold = a.high_plddt_threshold
                 effective_pae_threshold = a.high_pae_threshold
