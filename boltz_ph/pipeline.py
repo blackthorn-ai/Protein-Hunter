@@ -304,9 +304,21 @@ class ProteinHunter_Boltz:
         print("✅ ProteinHunter_Boltz initialized.")
 
     def _detect_disorder(self, plddt_per_residue, pae_val):
-        """Detect if protein is likely disordered based on AlphaFold metrics."""
+        """Detect if protein is likely disordered based on AlphaFold metrics.
+        
+        Returns True if disorder is detected. Respects disorder_mode:
+        - 'ordered': Always returns False (never detect disorder)
+        - 'disordered': Always returns True (force disorder mode)
+        - 'auto': Detect based on pLDDT/PAE metrics
+        """
         a = self.args
-        if not a.auto_detect_disorder or pae_val is None or plddt_per_residue is None:
+        
+        if a.disorder_mode == "ordered":
+            return False
+        if a.disorder_mode == "disordered":
+            return True
+        
+        if pae_val is None or plddt_per_residue is None:
             return False
         
         if hasattr(plddt_per_residue, 'numpy'):
@@ -503,9 +515,17 @@ class ProteinHunter_Boltz:
                 cycle_0_ipae = cycle_0_pae  # Simplified proxy
 
         plddt_per_residue_0 = output["plddt"].detach().cpu().numpy()[0]
-        if self._detect_disorder(plddt_per_residue_0, cycle_0_pae):
-            print("Detected disordered protein at cycle 0 - using relaxed thresholds for entire run")
+        if a.disorder_mode == "disordered":
+            print("Disorder mode: FORCED DISORDERED - using relaxed thresholds for entire run")
             disorder_detected_this_run = True
+        elif a.disorder_mode == "ordered":
+            print("Disorder mode: FORCED ORDERED - using strict thresholds throughout")
+            disorder_detected_this_run = False
+        elif self._detect_disorder(plddt_per_residue_0, cycle_0_pae):
+            print("Disorder mode: AUTO - Detected disordered protein at cycle 0, using relaxed thresholds")
+            disorder_detected_this_run = True
+        else:
+            print("Disorder mode: AUTO - No disorder detected, using standard thresholds")
 
         run_metrics["cycle_0_iptm"] = cycle_0_iptm
         run_metrics["cycle_0_plddt"] = float(
@@ -604,10 +624,10 @@ class ProteinHunter_Boltz:
 
             plddt_per_residue = output["plddt"].detach().cpu().numpy()[0]
             
-            if not disorder_detected_this_run:
+            if not disorder_detected_this_run and a.disorder_mode == "auto":
                 is_disordered = self._detect_disorder(plddt_per_residue, mean_pae)
                 if is_disordered:
-                    print("Detected disordered protein - using relaxed thresholds")
+                    print("🔄 AUTO: Detected disordered protein at cycle - using relaxed thresholds")
                     disorder_detected_this_run = True
             
             if disorder_detected_this_run:
@@ -642,7 +662,6 @@ class ProteinHunter_Boltz:
             if threshold_info:
                 print(f"  ⚠️  Not selected as best: {', '.join(threshold_info)}")
 
-            # Update best structure (check all thresholds)
             meets_all_thresholds = (
                 alanine_check 
                 and iptm_check 

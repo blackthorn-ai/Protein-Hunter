@@ -117,10 +117,11 @@ def parse_args():
                         help="Maximum PAE threshold for ordered proteins (lower is better, in Angstroms).")
     parser.add_argument("--high_ipae_threshold", default=15.0, type=float,
                         help="Maximum iPAE threshold for ordered binder designs (lower is better, in Angstroms).")
-    parser.add_argument("--auto_detect_disorder", action="store_true", default=True,
-                        help="Automatically detect disordered proteins and use relaxed thresholds.")
-    parser.add_argument("--no_auto_detect_disorder", dest="auto_detect_disorder", action="store_false",
-                        help="Disable automatic disorder detection (use fixed thresholds).")
+    parser.add_argument("--disorder_mode", default="auto", 
+                        choices=["auto", "disordered", "ordered"],
+                        help="Disorder handling mode: 'auto' = detect automatically during run, "
+                             "'disordered' = force relaxed thresholds from the start, "
+                             "'ordered' = use strict thresholds throughout (no relaxation).")
     parser.add_argument("--disordered_plddt_threshold", default=0.7, type=float,
                         help="Minimum pLDDT threshold for disordered proteins (relaxed, 0-1 scale).")
     parser.add_argument("--disordered_pae_threshold", default=20.0, type=float,
