@@ -536,7 +536,8 @@ class ProteinHunter_Boltz:
         )
         run_metrics["cycle_0_pae"] = cycle_0_pae if cycle_0_pae is not None else float("nan")
         run_metrics["cycle_0_ipae"] = cycle_0_ipae if cycle_0_ipae is not None else float("nan")
-        run_metrics["cycle_0_alanine"] = 0
+        run_metrics["cycle_0_alanine"] = initial_seq.count("A") if initial_seq else 0
+        run_metrics["cycle_0_seq"] = initial_seq
 
         # --- Optimization Cycles ---
         for cycle in range(a.num_cycles):
@@ -801,6 +802,8 @@ class ProteinHunter_Boltz:
                     "iptm": current_iptm,
                     "plddt": curr_plddt,
                     "iplddt": curr_iplddt,
+                    "pae": mean_pae if mean_pae is not None else float("nan"),
+                    "ipae": ipae if ipae is not None else float("nan"),
                     "alanine_count": alanine_count,
                     "sequence": seq,
                     "pdb_filename": pdb_base_name, # Log the *new* filename
