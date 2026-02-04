@@ -971,6 +971,7 @@ class ProteinHunter_Chai:
         self.n_cycles = args.n_cycles
         self.n_recycles = args.n_recycles
         self.n_diff_steps = args.n_diff_steps
+        self.n_diff_samples = args.n_diff_samples
         self.hysteresis_mode = args.hysteresis_mode
         self.repredict = args.repredict
         self.omit_aa = args.omit_aa
@@ -1096,7 +1097,7 @@ class ProteinHunter_Chai:
                 n_steps=self.n_cycles,
                 num_trunk_recycles=self.n_recycles,
                 num_diffn_timesteps=self.n_diff_steps,
-                num_diffn_samples=1,
+                num_diffn_samples=self.n_diff_samples,
                 temperature=self.temperature,
                 alanine_bias=self.alanine_bias,
                 alanine_bias_start=self.alanine_bias_start,

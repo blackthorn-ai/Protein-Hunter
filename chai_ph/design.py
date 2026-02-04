@@ -87,6 +87,12 @@ def parse_args():
         help="Diffusion steps for structure sampling.",
     )
     opt_group.add_argument(
+        "--n_diff_samples",
+        type=int,
+        default=1,
+        help="Number of diffusion samples per cycle (multimode generation). Higher values generate multiple structures and select the best one.",
+    )
+    opt_group.add_argument(
         "--hysteresis_mode",
         type=str,
         default="esm",
