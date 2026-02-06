@@ -87,6 +87,12 @@ def parse_args():
         help="Diffusion steps for structure sampling.",
     )
     opt_group.add_argument(
+        "--n_diff_samples",
+        type=int,
+        default=1,
+        help="Number of diffusion samples per cycle (multimode generation). Higher values generate multiple structures and select the best one.",
+    )
+    opt_group.add_argument(
         "--hysteresis_mode",
         type=str,
         default="esm",
@@ -158,26 +164,35 @@ def parse_args():
     )
     af_group.add_argument("--use_msa_for_af3", action="store_true")
     af_group.add_argument("--work_dir", default="", type=str)
+    # Universal threshold
     af_group.add_argument("--high_iptm_threshold", default=0.8, type=float,
-                          help="Minimum iPTM threshold for high-confidence designs.")
+                          help="Minimum iPTM for saving to high_iptm_* directories.")
+    
+    # Ordered protein thresholds
     af_group.add_argument("--high_plddt_threshold", default=0.8, type=float,
-                          help="Minimum pLDDT threshold for ordered proteins (0-1 scale).")
+                          help="Minimum pLDDT (0-1 scale) for best structure selection (ordered proteins).")
     af_group.add_argument("--high_pae_threshold", default=15.0, type=float,
-                          help="Maximum PAE threshold for ordered proteins (lower is better, in Angstroms).")
+                          help="Maximum PAE (Angstroms) for best structure selection (ordered proteins). Lower is better.")
     af_group.add_argument("--high_ipae_threshold", default=15.0, type=float,
-                          help="Maximum iPAE threshold for ordered binder designs (lower is better, in Angstroms).")
-    af_group.add_argument("--auto_detect_disorder", action="store_true", default=True,
-                          help="Automatically detect disordered proteins and use relaxed thresholds.")
-    af_group.add_argument("--no_auto_detect_disorder", dest="auto_detect_disorder", action="store_false",
-                          help="Disable automatic disorder detection (use fixed thresholds).")
+                          help="Maximum iPAE (Angstroms) for ordered binder designs. Lower is better.")
+    
+    # Disordered protein thresholds
     af_group.add_argument("--disordered_plddt_threshold", default=0.7, type=float,
-                          help="Minimum pLDDT threshold for disordered proteins (relaxed, 0-1 scale).")
+                          help="Relaxed pLDDT threshold for disordered targets (0-1 scale).")
     af_group.add_argument("--disordered_pae_threshold", default=20.0, type=float,
-                          help="Maximum PAE threshold for disordered proteins (relaxed, in Angstroms).")
-    af_group.add_argument("--min_low_plddt_stretch", default=30, type=int,
-                          help="Minimum consecutive residues with pLDDT < 50 to flag disorder.")
+                          help="Relaxed PAE threshold (Angstroms) for disordered targets.")
+    
+    # Disorder mode
+    af_group.add_argument("--disorder_mode", default="auto", type=str,
+                          choices=["auto", "disordered", "ordered"],
+                          help="Controls how disorder is handled: 'auto' (detect during run), "
+                               "'disordered' (force relaxed thresholds), 'ordered' (use strict thresholds).")
+    
+    # Disorder detection parameters (used when disorder_mode='auto')
     af_group.add_argument("--low_plddt_threshold", default=0.5, type=float,
-                          help="pLDDT threshold for detecting low-confidence regions (0-1 scale, 0.5 = 50 in 0-100 scale).")
+                          help="pLDDT value below which a residue is considered 'low confidence' (0-1 scale).")
+    af_group.add_argument("--min_low_plddt_stretch", default=30, type=int,
+                          help="Minimum consecutive low-pLDDT residues to trigger auto disorder detection.")
     return parser.parse_args()
 
 

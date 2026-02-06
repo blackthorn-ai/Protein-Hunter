@@ -396,25 +396,31 @@ class ProteinHunter_Boltz:
             
             return {'pae': mean_pae, 'ipae': ipae}
 
-        def detect_disorder(plddt_per_residue, pae_val, auto_detect, min_low_plddt_stretch=30, low_plddt_threshold=0.5, high_pae_threshold=15.0):
-            """Detect if protein is likely disordered based on AlphaFold metrics.
-            
-            Uses AlphaFold-based rules from Nat Comms paper:
-            - Flag an IDR if you see long stretches of pLDDT < 50 (≥30 residues)
-            - Use PAE for inter-domain uncertainty (high PAE = uncertain arrangement)
+        def detect_disorder(plddt_per_residue, pae_val, disorder_mode, min_low_plddt_stretch=30, low_plddt_threshold=0.5, high_pae_threshold=15.0):
+            """Determine if protein should use disordered thresholds based on disorder_mode.
             
             Args:
                 plddt_per_residue: Per-residue pLDDT scores (0-1 scale, numpy array)
                 pae_val: Mean PAE score (in Angstroms)
-                auto_detect: Whether to auto-detect disorder
+                disorder_mode: 'auto', 'disordered', or 'ordered'
+                    - 'auto': Detect disorder based on pLDDT/PAE metrics
+                    - 'disordered': Force relaxed thresholds (always return True)
+                    - 'ordered': Use strict thresholds (always return False)
                 min_low_plddt_stretch: Minimum consecutive residues with low pLDDT to flag disorder
                 low_plddt_threshold: pLDDT threshold (0-1 scale, 0.5 = 50 in 0-100 scale)
                 high_pae_threshold: PAE threshold for domain-level uncertainty (Angstroms)
                 
             Returns:
-                bool: True if protein is likely disordered
+                bool: True if protein should use disordered (relaxed) thresholds
             """
-            if not auto_detect or pae_val is None or plddt_per_residue is None:
+            # Handle forced modes
+            if disorder_mode == "disordered":
+                return True
+            if disorder_mode == "ordered":
+                return False
+            
+            # Auto-detect mode: analyze metrics
+            if pae_val is None or plddt_per_residue is None:
                 return False
             
             if hasattr(plddt_per_residue, 'detach'):
@@ -699,12 +705,10 @@ class ProteinHunter_Boltz:
             if "plddt" in output:
                 plddt_per_residue = output["plddt"]
             
-            # Detect if protein is disordered using per-residue pLDDT
-            # Uses AlphaFold-based rules: long stretches of pLDDT < 50 OR high PAE
             is_disordered = detect_disorder(
                 plddt_per_residue, 
                 pae_val, 
-                a.auto_detect_disorder,
+                a.disorder_mode,
                 a.min_low_plddt_stretch,
                 a.low_plddt_threshold,
                 a.high_pae_threshold
@@ -716,7 +720,10 @@ class ProteinHunter_Boltz:
                 effective_plddt_threshold = a.disordered_plddt_threshold
                 effective_pae_threshold = a.disordered_pae_threshold
                 effective_ipae_threshold = a.disordered_pae_threshold
-                print(f"Detected disordered protein - using relaxed thresholds")
+                if a.disorder_mode == "auto":
+                    print(f"Auto-detected disordered protein - using relaxed thresholds")
+                else:
+                    print(f"Disorder mode '{a.disorder_mode}' - using relaxed thresholds")
             else:
                 # Strict thresholds for ordered proteins
                 effective_plddt_threshold = a.high_plddt_threshold
