@@ -56,7 +56,7 @@ def optimize_protein_design(
     high_plddt_threshold: float = 0.8,
     high_pae_threshold: float = 15.0,
     high_ipae_threshold: float = 15.0,
-    auto_detect_disorder: bool = True,
+    disorder_mode: str = "auto",
     disordered_plddt_threshold: float = 0.7,
     disordered_pae_threshold: float = 20.0,
     min_low_plddt_stretch: int = 30,
@@ -166,25 +166,30 @@ def optimize_protein_design(
         ipae = (target_to_binder + binder_to_target) / 2
         return {'pae': mean_pae, 'ipae': ipae}
 
-    def detect_disorder(plddt_per_residue, pae_val, auto_detect, min_low_plddt_stretch=30, low_plddt_threshold=0.5, high_pae_threshold=15.0):
-        """Detect if protein is likely disordered based on AlphaFold metrics.
-        
-        Uses AlphaFold-based rules from Nat Comms paper:
-        - Flag an IDR if you see long stretches of pLDDT < 50 (≥30 residues)
-        - Use PAE for inter-domain uncertainty (high PAE = uncertain arrangement)
+    def detect_disorder(plddt_per_residue, pae_val, disorder_mode, min_low_plddt_stretch=30, low_plddt_threshold=0.5, high_pae_threshold=15.0):
+        """Determine if protein should use disordered thresholds based on disorder_mode.
         
         Args:
             plddt_per_residue: Per-residue pLDDT scores (0-1 scale, numpy array)
             pae_val: Mean PAE score (in Angstroms)
-            auto_detect: Whether to auto-detect disorder
+            disorder_mode: 'auto', 'disordered', or 'ordered'
+                - 'auto': Detect disorder based on pLDDT/PAE metrics
+                - 'disordered': Force relaxed thresholds (always return True)
+                - 'ordered': Use strict thresholds (always return False)
             min_low_plddt_stretch: Minimum consecutive residues with low pLDDT to flag disorder
             low_plddt_threshold: pLDDT threshold (0-1 scale, 0.5 = 50 in 0-100 scale)
             high_pae_threshold: PAE threshold for domain-level uncertainty (Angstroms)
             
         Returns:
-            bool: True if protein is likely disordered
+            bool: True if protein should use disordered (relaxed) thresholds
         """
-        if not auto_detect or pae_val is None or plddt_per_residue is None:
+        # Handle forced modes
+        if disorder_mode == "disordered":
+            return True
+        if disorder_mode == "ordered":
+            return False
+        
+        if pae_val is None or plddt_per_residue is None:
             return False
         
         if hasattr(plddt_per_residue, 'numpy'):
@@ -605,7 +610,7 @@ def optimize_protein_design(
             is_disordered = detect_disorder(
                 plddt_per_residue, 
                 pae_val, 
-                auto_detect_disorder,
+                disorder_mode,
                 min_low_plddt_stretch,
                 low_plddt_threshold,
                 high_pae_threshold
@@ -618,7 +623,10 @@ def optimize_protein_design(
                 effective_pae_threshold = disordered_pae_threshold
                 effective_ipae_threshold = disordered_pae_threshold
                 if verbose:
-                    print(f"{prefix} | Detected disordered protein - using relaxed thresholds")
+                    if disorder_mode == "auto":
+                        print(f"{prefix} | Auto-detected disordered protein - using relaxed thresholds")
+                    else:
+                        print(f"{prefix} | Disorder mode '{disorder_mode}' - using relaxed thresholds")
             else:
                 # Strict thresholds for ordered proteins
                 effective_plddt_threshold = high_plddt_threshold
@@ -995,7 +1003,7 @@ class ProteinHunter_Chai:
         self.high_plddt_threshold = args.high_plddt_threshold
         self.high_pae_threshold = args.high_pae_threshold
         self.high_ipae_threshold = args.high_ipae_threshold
-        self.auto_detect_disorder = args.auto_detect_disorder
+        self.disorder_mode = args.disorder_mode
         self.disordered_plddt_threshold = args.disordered_plddt_threshold
         self.disordered_pae_threshold = args.disordered_pae_threshold
         self.min_low_plddt_stretch = args.min_low_plddt_stretch
@@ -1109,7 +1117,7 @@ class ProteinHunter_Chai:
                 high_plddt_threshold=self.high_plddt_threshold,
                 high_pae_threshold=self.high_pae_threshold,
                 high_ipae_threshold=self.high_ipae_threshold,
-                auto_detect_disorder=self.auto_detect_disorder,
+                disorder_mode=self.disorder_mode,
                 disordered_plddt_threshold=self.disordered_plddt_threshold,
                 disordered_pae_threshold=self.disordered_pae_threshold,
                 min_low_plddt_stretch=self.min_low_plddt_stretch,

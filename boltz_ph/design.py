@@ -109,27 +109,35 @@ def parse_args():
     parser.add_argument("--alanine_bias_start", default=-0.5, type=float)
     parser.add_argument("--alanine_bias_end", default=-0.1, type=float)
     parser.add_argument("--alanine_bias", action="store_true")
+    # Universal threshold
     parser.add_argument("--high_iptm_threshold", default=0.8, type=float,
-                        help="Minimum iPTM threshold for high-confidence designs.")
+                        help="Minimum iPTM for saving to high_iptm_* directories.")
+    
+    # Ordered protein thresholds
     parser.add_argument("--high_plddt_threshold", default=0.8, type=float,
-                        help="Minimum pLDDT threshold for ordered proteins (0-1 scale).")
+                        help="Minimum pLDDT (0-1 scale) for best structure selection (ordered proteins).")
     parser.add_argument("--high_pae_threshold", default=15.0, type=float,
-                        help="Maximum PAE threshold for ordered proteins (lower is better, in Angstroms).")
+                        help="Maximum PAE (Angstroms) for best structure selection (ordered proteins). Lower is better.")
     parser.add_argument("--high_ipae_threshold", default=15.0, type=float,
-                        help="Maximum iPAE threshold for ordered binder designs (lower is better, in Angstroms).")
-    parser.add_argument("--auto_detect_disorder", action="store_true", default=True,
-                        help="Automatically detect disordered proteins and use relaxed thresholds.")
-    parser.add_argument("--no_auto_detect_disorder", dest="auto_detect_disorder", action="store_false",
-                        help="Disable automatic disorder detection (use fixed thresholds).")
+                        help="Maximum iPAE (Angstroms) for ordered binder designs. Lower is better.")
+    
+    # Disordered protein thresholds
     parser.add_argument("--disordered_plddt_threshold", default=0.7, type=float,
-                        help="Minimum pLDDT threshold for disordered proteins (relaxed, 0-1 scale).")
+                        help="Relaxed pLDDT threshold for disordered targets (0-1 scale).")
     parser.add_argument("--disordered_pae_threshold", default=20.0, type=float,
-                        help="Maximum PAE threshold for disordered proteins (relaxed, in Angstroms).")
-    parser.add_argument("--min_low_plddt_stretch", default=30, type=int,
-                        help="Minimum consecutive residues with pLDDT < 50 to flag disorder.")
+                        help="Relaxed PAE threshold (Angstroms) for disordered targets.")
+    
+    # Disorder mode
+    parser.add_argument("--disorder_mode", default="auto", type=str,
+                        choices=["auto", "disordered", "ordered"],
+                        help="Controls how disorder is handled: 'auto' (detect during run), "
+                             "'disordered' (force relaxed thresholds), 'ordered' (use strict thresholds).")
+    
+    # Disorder detection parameters (used when disorder_mode='auto')
     parser.add_argument("--low_plddt_threshold", default=0.5, type=float,
-                        help="pLDDT threshold for detecting low-confidence regions (0-1 scale, 0.5 = 50 in 0-100 scale).")
-    # --- End Existing Arguments ---
+                        help="pLDDT value below which a residue is considered 'low confidence' (0-1 scale).")
+    parser.add_argument("--min_low_plddt_stretch", default=30, type=int,
+                        help="Minimum consecutive low-pLDDT residues to trigger auto disorder detection.")
 
     return parser.parse_args()
 
